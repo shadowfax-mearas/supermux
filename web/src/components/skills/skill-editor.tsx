@@ -138,7 +138,10 @@ export function SkillEditor({
       title={id ? `Edit ${id}` : 'Add skill'}
       className="sm:max-w-3xl"
     >
-      <div className="flex max-h-[76dvh] flex-col gap-3 overflow-y-auto px-4 pb-5">
+      <fieldset
+        disabled={busy}
+        className="flex min-w-0 max-h-[76dvh] flex-col gap-3 overflow-y-auto px-4 pb-5"
+      >
         {!initial.revision && (
           <div className="flex items-end gap-2">
             <label className="flex-1 text-sm">
@@ -174,6 +177,7 @@ export function SkillEditor({
           <label className="text-sm">
             Import from this server
             <select
+              aria-label="Import from this server"
               className={field}
               value=""
               disabled={busy}
@@ -212,6 +216,7 @@ export function SkillEditor({
         <label className="text-sm">
           Markdown file
           <select
+            aria-label="Markdown file"
             className={field}
             value={selected}
             onChange={(e) => select(e.target.value)}
@@ -276,7 +281,7 @@ export function SkillEditor({
             Save skill
           </Button>
         </div>
-      </div>
+      </fieldset>
     </ResponsiveSheet>
   )
 }

@@ -24,3 +24,23 @@ END;
 CREATE TRIGGER skill_grants_company_delete AFTER DELETE ON companies BEGIN
     DELETE FROM skill_grants WHERE target = '@company:' || OLD.id;
 END;
+
+-- List, grant and launch use the same eligible targets and precedence.
+CREATE VIEW skill_targets AS
+SELECT '*' AS target, NULL AS company_id
+UNION ALL SELECT '@company:' || id, id FROM companies
+UNION ALL SELECT name, company_id FROM sessions
+    WHERE host_id IS NULL AND provider IN ('claude', 'codex');
+
+CREATE INDEX skill_grants_by_target ON skill_grants(target, skill);
+CREATE VIEW effective_skill_grants AS
+SELECT target, skill, source FROM (
+    SELECT t.target, g.skill, g.target AS source,
+           row_number() OVER (
+               PARTITION BY t.target, g.skill
+               ORDER BY (g.target = t.target) DESC, (g.target = '*') ASC
+           ) AS priority
+    FROM skill_targets t JOIN skill_grants g
+      ON g.target IN (t.target, '@company:' || t.company_id, '*')
+    WHERE g.enabled
+) WHERE priority = 1;

@@ -16,13 +16,15 @@ pub struct Launch {
 }
 
 /// Called with the session lifecycle lock held. Only the selected packages ever
-/// reach this session's private, read-only directory, including on revocation.
+/// are materialized in this session’s directory, mounted read-only for confined bots.
 pub async fn prepare(pool: &SqlitePool, data: &Path, session: &Session) -> Result<Launch> {
-    let company = session.company_id.map(|id| format!("@company:{id}"));
     let packages: Vec<(String, String, String, String)> = sqlx::query_as(
-        "SELECT name, description, files, revision FROM skill_packages p
-         WHERE EXISTS(SELECT 1 FROM skill_grants g WHERE g.skill=p.name AND enabled AND target IN (?,?,'*')) ORDER BY name")
-        .bind(&session.name).bind(company).fetch_all(pool).await?;
+        "SELECT p.name,p.description,p.files,p.revision FROM effective_skill_grants g
+         JOIN skill_packages p ON p.name=g.skill WHERE g.target=? ORDER BY p.name",
+    )
+    .bind(&session.name)
+    .fetch_all(pool)
+    .await?;
     let parent = data.join("session-config").join(&session.name);
     if session.company_id.is_some() {
         // Confinement binds this parent when the shell starts. A later grant

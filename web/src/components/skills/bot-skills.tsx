@@ -1,3 +1,5 @@
+import type { ApiSession } from '@/lib/api'
+import { supportsManagedSkills } from '@/lib/api/skill-library'
 import { useCatalog } from '@/hooks/use-agent-skills'
 import { lazy, Suspense, useState } from 'react'
 import { ResponsiveSheet } from '@/components/ui/responsive-sheet'
@@ -7,9 +9,17 @@ const Library = lazy(() =>
   import('./skill-library').then((m) => ({ default: m.SkillLibraryView })),
 )
 
-export function BotSkills({ name }: { name: string }) {
+export function BotSkills({
+  name,
+  session,
+}: {
+  name: string
+  session: ApiSession | null
+}) {
   const [open, setOpen] = useState(false)
-  const query = useCatalog(name)
+  const supported = supportsManagedSkills(session)
+  const query = useCatalog(name, supported)
+  if (!supported) return null
   const granted = Object.keys(query.data?.effective ?? {}).sort()
   return (
     <section className="space-y-2">
