@@ -3,7 +3,6 @@ mod launch;
 mod sources;
 
 use crate::{
-    db,
     error::AppError,
     scope::{self, OptCtx, Scope},
     state::AppState,
@@ -17,7 +16,7 @@ use base64::{engine::general_purpose::STANDARD, Engine};
 pub use launch::{cleanup, prepare, record};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 
 type Files = BTreeMap<String, String>; // relative path -> base64, including binary resources
 type Reply = Result<Json<Value>, AppError>;
@@ -212,25 +211,11 @@ struct Toggle {
 
 async fn target_company(s: &AppState, ctx: &OptCtx, target: &str) -> Result<Option<i64>, AppError> {
     scope::authorize_connector_target(s, ctx.0.as_ref(), target).await?;
-    if target == "*" {
-        return Ok(None);
-    }
-    if let Some(id) = target.strip_prefix("@company:") {
-        let id: i64 = id.parse().map_err(|_| missing())?;
-        if target != format!("@company:{id}") || db::companies::get(&s.pool, id).await?.is_none() {
-            return Err(missing());
-        }
-        return Ok(Some(id));
-    }
-    let session = db::sessions::get(&s.pool, target)
+    sqlx::query_scalar("SELECT company_id FROM skill_targets WHERE target=?")
+        .bind(target)
+        .fetch_optional(&s.pool)
         .await?
-        .ok_or_else(missing)?;
-    if session.host_id.is_some() || !matches!(session.provider.as_str(), "claude" | "codex") {
-        return Err(bad(
-            "Managed skills require a local Claude or Codex session",
-        ));
-    }
-    Ok(session.company_id)
+        .ok_or_else(missing)
 }
 
 async fn grant(
@@ -242,12 +227,18 @@ async fn grant(
 ) -> Reply {
     let company = target_company(&s, &ctx, &q.target).await?;
     // Check the same company at write time in case the bot moved during authorization.
-    let r = sqlx::query("INSERT INTO skill_grants(skill,target,enabled)
-         SELECT name,?1,?2 FROM skill_packages WHERE name=?3 AND (
-             ?1='*' OR EXISTS (SELECT 1 FROM companies WHERE '@company:'||id=?1 AND id=?4)
-             OR EXISTS (SELECT 1 FROM sessions WHERE name=?1 AND company_id IS ?4 AND host_id IS NULL AND provider IN ('claude','codex')))
-         ON CONFLICT(skill,target) DO UPDATE SET enabled=excluded.enabled")
-        .bind(&q.target).bind(body.enabled).bind(name).bind(company).execute(&s.pool).await?;
+    let r = sqlx::query(
+        "INSERT INTO skill_grants(skill,target,enabled)
+         SELECT p.name, t.target, ? FROM skill_packages p, skill_targets t
+         WHERE p.name=? AND t.target=? AND t.company_id IS ?
+         ON CONFLICT(skill,target) DO UPDATE SET enabled=excluded.enabled",
+    )
+    .bind(body.enabled)
+    .bind(name)
+    .bind(q.target)
+    .bind(company)
+    .execute(&s.pool)
+    .await?;
     if r.rows_affected() == 0 {
         return Err(missing());
     }
@@ -261,12 +252,11 @@ async fn revoke(
 ) -> Reply {
     let company = target_company(&s, &ctx, &q.target).await?;
     sqlx::query(
-        "DELETE FROM skill_grants WHERE target=?1 AND skill=?2 AND (
-        ?1='*' OR EXISTS (SELECT 1 FROM companies WHERE '@company:'||id=?1 AND id=?3)
-        OR EXISTS (SELECT 1 FROM sessions WHERE name=?1 AND company_id IS ?3))",
+        "DELETE FROM skill_grants WHERE skill=? AND target=(
+        SELECT target FROM skill_targets WHERE target=? AND company_id IS ?)",
     )
-    .bind(&q.target)
     .bind(name)
+    .bind(q.target)
     .bind(company)
     .execute(&s.pool)
     .await?;
@@ -280,16 +270,23 @@ struct Card {
     revision: String,
 }
 async fn list(State(s): State<AppState>, ctx: OptCtx, Query(q): Query<Target>) -> Reply {
-    let company = target_company(&s, &ctx, &q.target)
-        .await?
-        .map(|id| format!("@company:{id}"));
+    target_company(&s, &ctx, &q.target).await?;
     let cards: Vec<Card> =
         sqlx::query_as("SELECT name,description,revision FROM skill_packages ORDER BY name")
             .fetch_all(&s.pool)
             .await?;
-    let grants: Vec<(String,String,bool)> = sqlx::query_as("SELECT skill,target,enabled FROM skill_grants WHERE target IN (?,?,'*') ORDER BY skill,target")
-        .bind(&q.target).bind(&company).fetch_all(&s.pool).await?;
-    let effective = effective_grants(&grants, &q.target, company.as_deref());
+    let grants: Vec<(String, String, bool)> = sqlx::query_as(
+        "SELECT skill,target,enabled FROM skill_grants WHERE target=? ORDER BY skill",
+    )
+    .bind(&q.target)
+    .fetch_all(&s.pool)
+    .await?;
+    let assignments: Vec<(String, String)> =
+        sqlx::query_as("SELECT skill,source FROM effective_skill_grants WHERE target=?")
+            .bind(&q.target)
+            .fetch_all(&s.pool)
+            .await?;
+    let effective: BTreeMap<_, _> = assignments.into_iter().collect();
     let desired: BTreeMap<_, _> = cards
         .iter()
         .filter(|c| effective.contains_key(&c.name))
@@ -309,25 +306,10 @@ async fn list(State(s): State<AppState>, ctx: OptCtx, Query(q): Query<Target>) -
     ))
 }
 
-fn effective_grants(
-    rows: &[(String, String, bool)],
-    target: &str,
-    company: Option<&str>,
-) -> HashMap<String, String> {
-    let mut effective = HashMap::new();
-    for scope in [Some("*"), company, Some(target)].into_iter().flatten() {
-        for (name, source, enabled) in rows {
-            if *enabled && source == scope {
-                effective.insert(name.clone(), source.clone());
-            }
-        }
-    }
-    effective
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::db;
 
     fn package(name: &str) -> Files {
         Files::from([
@@ -386,6 +368,28 @@ mod tests {
             .execute(&pool)
             .await
             .unwrap();
+        sqlx::query("INSERT INTO companies(id,slug,display_name,root_dir,created_at,updated_at) VALUES(1,'acme','Acme','/tmp/acme',0,0)")
+            .execute(&pool).await.unwrap();
+        sqlx::query("UPDATE sessions SET company_id=1 WHERE name='one'")
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query("INSERT INTO skill_grants VALUES('release','@company:1',1)")
+            .execute(&pool)
+            .await
+            .unwrap();
+        let selected = || {
+            sqlx::query_scalar::<_, String>(
+                "SELECT source FROM effective_skill_grants WHERE target='one' AND skill='release'",
+            )
+            .fetch_one(&pool)
+        };
+        assert_eq!(selected().await.unwrap(), "one");
+        sqlx::query("UPDATE skill_grants SET enabled=0 WHERE target='one'")
+            .execute(&pool)
+            .await
+            .unwrap();
+        assert_eq!(selected().await.unwrap(), "@company:1");
         let one = db::sessions::get(&pool, "one").await.unwrap().unwrap();
         let two = db::sessions::get(&pool, "two").await.unwrap().unwrap();
         let claude = prepare(&pool, &data, &one).await.unwrap();
@@ -394,7 +398,7 @@ mod tests {
             .join(".claude/skills/release/references/review.md");
         assert_eq!(std::fs::read_to_string(&reference).unwrap(), "Crème brûlée");
         assert!(prepare(&pool, &data, &two).await.unwrap().flags.is_empty());
-        sqlx::query("UPDATE skill_grants SET target='*'")
+        sqlx::query("INSERT INTO skill_grants VALUES('release','*',1)")
             .execute(&pool)
             .await
             .unwrap();

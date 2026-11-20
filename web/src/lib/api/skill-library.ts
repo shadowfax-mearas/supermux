@@ -1,5 +1,15 @@
 import { settingsRequest } from './client'
 
+export function supportsManagedSkills(
+  session: { provider: string; host_id?: number | null } | null,
+) {
+  return (
+    session != null &&
+    session.host_id == null &&
+    ['claude', 'codex'].includes(session.provider)
+  )
+}
+
 export interface SkillCard {
   name: string
   description: string

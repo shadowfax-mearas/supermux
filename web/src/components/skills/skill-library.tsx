@@ -7,7 +7,11 @@ import { RestartToApply } from '@/components/roster/restart-to-apply'
 import { useCompanies } from '@/hooks/use-companies'
 import { useSessions } from '@/hooks/use-sessions'
 import { companyGrantKey } from '@/lib/api/connectors'
-import { skillLibrary, type SkillPackage } from '@/lib/api/skill-library'
+import {
+  skillLibrary,
+  supportsManagedSkills,
+  type SkillPackage,
+} from '@/lib/api/skill-library'
 import { useUI } from '@/stores/ui-store'
 import { useViewerIdentity } from '@/stores/viewer-store'
 import { useCatalog } from '@/hooks/use-agent-skills'
@@ -39,7 +43,7 @@ export function SkillLibraryView({ bot }: { bot?: string }) {
   if (viewer.kind === 'owner') options.set('*', 'All agents')
   for (const c of companies) options.set(companyGrantKey(c.id), c.display_name)
   for (const s of sessions) {
-    if (s.host_id == null && ['claude', 'codex'].includes(s.provider))
+    if (supportsManagedSkills(s))
       options.set(
         s.name,
         (s.display_name || s.name) +
@@ -105,6 +109,7 @@ export function SkillLibraryView({ bot }: { bot?: string }) {
               Grant scope
               <select
                 className="mt-1 block h-10 w-full rounded-lg border bg-background px-2"
+                aria-label="Grant scope"
                 value={target}
                 onChange={(e) => {
                   setError('')

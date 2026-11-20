@@ -24,6 +24,7 @@ export function Store() {
         className="flex gap-4 border-b px-4 py-2 text-sm font-medium"
       >
         <Link
+          aria-current={!skills ? 'page' : undefined}
           to="/store"
           className={
             skills ? 'text-muted-foreground' : 'underline underline-offset-4'
@@ -32,6 +33,7 @@ export function Store() {
           Connectors
         </Link>
         <Link
+          aria-current={skills ? 'page' : undefined}
           to="/store?tab=skills"
           className={
             skills ? 'underline underline-offset-4' : 'text-muted-foreground'
