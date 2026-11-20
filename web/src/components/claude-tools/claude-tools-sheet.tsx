@@ -1167,6 +1167,9 @@ function SkillRow({
         </div>
         <Play className="mt-1 size-4 shrink-0 text-muted-foreground" aria-hidden />
       </motion.button>
+      {entry.removable && entry.scope !== 'plugin' && (
+        <a className="mt-1 inline-flex px-3 py-1.5 text-xs font-medium text-primary underline" href={'/files?' + new URLSearchParams({ path: entry.path, select: 'SKILL.md' })}>Edit skill files</a>
+      )}
     </motion.li>
   )
 }
