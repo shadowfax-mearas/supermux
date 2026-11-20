@@ -117,6 +117,7 @@ export function AgentToolsSheet({
       description={description}
       className="sm:max-w-lg"
     >
+      <a className="inline-flex px-4 py-2 text-sm font-medium text-primary underline" href={'/store?tab=skills' + (sessionName ? '&target=' + encodeURIComponent(sessionName) : '')}>Manage agent skills</a>
       {open && (
         isCodex ? (
           <CodexToolsBody

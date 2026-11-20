@@ -14,6 +14,8 @@ const item = (name: string) => `${base}/${encodeURIComponent(name)}`
 const targetQuery = (target: string) => `?target=${encodeURIComponent(target)}`
 
 export const skillLibrary = {
+  sources: (target: string) => settingsRequest<[string, string][]>(base + '/-/sources' + targetQuery(target)),
+  draft: (target: string, source: string, name: string) => settingsRequest<SkillPackage>(base + '/-/sources?' + new URLSearchParams({ target, source, name })),
   list: (target: string) => settingsRequest<SkillCatalog>(base + targetQuery(target)),
   get: (name: string) => settingsRequest<SkillPackage>(item(name)),
   save: (name: string, pkg: SkillPackage) => settingsRequest(item(name), { method: 'PUT', body: JSON.stringify(pkg) }),
