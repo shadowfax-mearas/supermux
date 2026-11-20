@@ -14,7 +14,7 @@ use axum::{
     Json, Router,
 };
 use base64::{engine::general_purpose::STANDARD, Engine};
-pub use launch::{prepare, record};
+pub use launch::{cleanup, prepare, record};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, HashMap};
@@ -401,6 +401,53 @@ mod tests {
         let codex = prepare(&pool, &data, &two).await.unwrap();
         assert_eq!(codex.flags[0], "-c");
         assert!(codex.flags[1].contains("mcp_servers.supermux_skills"));
+        // Exercise the same stdio exchange the Codex client uses, including a
+        // nested UTF-8 document and a file absent from the grant.
+        use std::{
+            io::Write,
+            process::{Command, Stdio},
+        };
+        let mut child = Command::new("python3")
+            .arg(data.join("session-config/two/agent-skills/skills.py"))
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let mut input = child.stdin.take().unwrap();
+        for (id, method, params) in [
+            (1, "tools/list", json!({})),
+            (
+                2,
+                "tools/call",
+                json!({"name":"release","arguments":{"file":"references/review.md"}}),
+            ),
+            (
+                3,
+                "tools/call",
+                json!({"name":"release","arguments":{"file":"absent.md"}}),
+            ),
+        ] {
+            writeln!(
+                input,
+                "{}",
+                json!({"id":id,"jsonrpc":"2.0","method":method,"params":params})
+            )
+            .unwrap();
+        }
+        drop(input);
+        let output = child.wait_with_output().unwrap();
+        assert!(output.status.success());
+        let replies: Vec<Value> = String::from_utf8(output.stdout)
+            .unwrap()
+            .lines()
+            .map(|l| serde_json::from_str(l).unwrap())
+            .collect();
+        assert_eq!(replies[0]["result"]["tools"][0]["name"], "release");
+        assert!(replies[1]["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap()
+            .contains("Crème brûlée"));
+        assert_eq!(replies[2]["result"]["isError"], true);
         record(&pool, "two", &codex).await.unwrap();
         assert_eq!(codex.snapshot, claude.snapshot);
         sqlx::query("DELETE FROM skill_packages")

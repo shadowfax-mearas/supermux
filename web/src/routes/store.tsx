@@ -19,11 +19,37 @@ export function Store() {
   const skills = !id && search.get('tab') === 'skills'
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <nav aria-label="Store sections" className="flex gap-4 border-b px-4 py-2 text-sm font-medium">
-        <Link to="/store" className={skills ? 'text-muted-foreground' : 'underline underline-offset-4'}>Connectors</Link>
-        <Link to="/store?tab=skills" className={skills ? 'underline underline-offset-4' : 'text-muted-foreground'}>Agent skills</Link>
+      <nav
+        aria-label="Store sections"
+        className="flex gap-4 border-b px-4 py-2 text-sm font-medium"
+      >
+        <Link
+          to="/store"
+          className={
+            skills ? 'text-muted-foreground' : 'underline underline-offset-4'
+          }
+        >
+          Connectors
+        </Link>
+        <Link
+          to="/store?tab=skills"
+          className={
+            skills ? 'underline underline-offset-4' : 'text-muted-foreground'
+          }
+        >
+          Agent skills
+        </Link>
       </nav>
-      {skills ? <SkillLibraryView /> : <StoreView key={id ?? 'grid'} grantTarget={null} variant="page" initialOpenId={id} />}
+      {skills ? (
+        <SkillLibraryView />
+      ) : (
+        <StoreView
+          key={id ?? 'grid'}
+          grantTarget={null}
+          variant="page"
+          initialOpenId={id}
+        />
+      )}
     </div>
   )
 }

@@ -1175,7 +1175,7 @@ function SetupTab({
             a second copy of the word above them — four lines of chrome for one
             section, and the tab's worst spacing moment at 390px. */}
         <GrantedConnectors name={name} />
-      {session && session.host_id == null && ['claude', 'codex'].includes(session.provider) && <BotSkills name={name} />}
+        {session && session.host_id == null && ['claude', 'codex'].includes(session.provider) && <BotSkills name={name} />}
       </Group>
 
       <Group>

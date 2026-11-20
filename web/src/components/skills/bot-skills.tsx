@@ -1,25 +1,48 @@
-import { useQuery } from '@tanstack/react-query'
-import { Link } from 'react-router-dom'
+import { useCatalog } from '@/hooks/use-agent-skills'
+import { lazy, Suspense, useState } from 'react'
+import { ResponsiveSheet } from '@/components/ui/responsive-sheet'
 import { RestartToApply } from '@/components/roster/restart-to-apply'
-import { skillLibrary } from '@/lib/api/skill-library'
 
-export function useCatalog(target: string) {
-  return useQuery({
-    queryKey: ['agent-skills', target],
-    queryFn: () => skillLibrary.list(target),
-    refetchInterval: query => query.state.data?.pending ? 5000 : false,
-  })
-}
+const Library = lazy(() =>
+  import('./skill-library').then((m) => ({ default: m.SkillLibraryView })),
+)
 
 export function BotSkills({ name }: { name: string }) {
+  const [open, setOpen] = useState(false)
   const query = useCatalog(name)
   const granted = Object.keys(query.data?.effective ?? {}).sort()
-  return <section className="space-y-2">
-    <div className="flex items-center justify-between gap-2">
-      <h3 className="text-sm font-semibold">Agent skills</h3>
-      <Link className="text-sm text-primary underline" to={'/store?tab=skills&target=' + encodeURIComponent(name)}>Manage skills</Link>
-    </div>
-    <p className="text-xs text-muted-foreground">{query.isError ? 'Skills unavailable.' : query.isPending ? 'Loading skills…' : granted.join(', ') || 'No managed skills assigned.'}</p>
-    {query.data?.pending && <RestartToApply name={name} />}
-  </section>
+  return (
+    <section className="space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="text-sm font-semibold">Agent skills</h3>
+        <button
+          type="button"
+          className="text-sm text-primary underline"
+          onClick={() => setOpen(true)}
+        >
+          Manage skills
+        </button>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        {query.isError
+          ? 'Skills unavailable.'
+          : query.isPending
+            ? 'Loading skills…'
+            : granted.join(', ') || 'No managed skills assigned.'}
+      </p>
+      {query.data?.pending && <RestartToApply name={name} />}
+      {open && (
+        <ResponsiveSheet
+          open
+          onOpenChange={setOpen}
+          title={'Agent skills for ' + name}
+          className="sm:max-w-2xl"
+        >
+          <Suspense fallback={<p className="p-4">Loading skills…</p>}>
+            <Library bot={name} />
+          </Suspense>
+        </ResponsiveSheet>
+      )}
+    </section>
+  )
 }
