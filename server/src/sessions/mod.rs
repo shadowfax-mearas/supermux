@@ -496,6 +496,10 @@ pub struct SessionView {
     /// unchanged.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub blocked: Option<pty_state::Blocked>,
+    /// A Codex sign-in screen is currently visible. The API exposes only
+    /// the condition, never a login URL or device code.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub authentication_required: bool,
     /// The dim footer line Claude Code prints at ≥70 % utilisation, verbatim
     /// (`You've used 77% of your … limit · resets …`). A quiet chip — the
     /// session still works — and the ONLY warning plane there is: this line
@@ -744,6 +748,8 @@ fn view(
         // Same shape as `mode`: a pure scan over the held capture, so it is
         // always as fresh as the capture and never needs invalidating.
         blocked: pty.blocked,
+        authentication_required: s.provider == "codex"
+            && login::read_provider_auth(last_capture).is_some(),
         limit_warning: pty.warning,
         rate_limits: statusline.as_ref().and_then(RateLimits::from_statusline),
         // Last user prompt + its epoch. Pair them: either both Some, or both

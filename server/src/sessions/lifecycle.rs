@@ -1353,7 +1353,7 @@ fn codex_footer_boundary(raw: &str, visible: &str, separated: bool) -> bool {
     if let Some(effort) = words.next() {
         if !matches!(
             effort,
-            "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max"
+            "default" | "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max"
         ) {
             return false;
         }
@@ -8967,6 +8967,7 @@ mod write_runtime_tests {
         for footer in [
             CURRENT_CODEX_FOOTER.to_string(),
             CURRENT_CODEX_FOOTER.replace("GPT-", "gpt-"),
+            CURRENT_CODEX_FOOTER.replace("GPT-6.1-Sol high", "GPT-6.2-Sol default"),
         ] {
             let capture = format!("› \x1b[2mAsk Codex to do anything\x1b[22m\n{footer}");
             assert_eq!(composer_text(&capture, "codex").as_deref(), Some(""));
