@@ -1,5 +1,6 @@
 //! Owner-managed Agent Skills packages and the same grant targets as connectors.
 mod launch;
+mod sources;
 
 use crate::{
     db,
@@ -24,6 +25,7 @@ type Reply = Result<Json<Value>, AppError>;
 pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/api/agent-skills", get(list))
+        .route("/api/agent-skills/-/sources", get(sources::browse))
         .route(
             "/api/agent-skills/{name}",
             get(detail).put(save).delete(remove),
@@ -42,16 +44,19 @@ fn missing() -> AppError {
     AppError::NotFound("Skill or target not found".into())
 }
 
-fn validate(name: &str, files: &Files) -> Result<String, AppError> {
-    if name.is_empty()
-        || name.len() > 64
-        || !name
+fn valid_name(name: &str) -> bool {
+    !name.is_empty()
+        && name.len() <= 64
+        && name
             .bytes()
             .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
-        || name.starts_with('-')
-        || name.ends_with('-')
-        || name.contains("--")
-    {
+        && !name.starts_with('-')
+        && !name.ends_with('-')
+        && !name.contains("--")
+}
+
+fn validate(name: &str, files: &Files) -> Result<String, AppError> {
+    if !valid_name(name) {
         return Err(bad(
             "Use a lowercase skill name with letters, digits and single hyphens",
         ));

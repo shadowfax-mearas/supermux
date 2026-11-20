@@ -24,6 +24,11 @@ pub async fn prepare(pool: &SqlitePool, data: &Path, session: &Session) -> Resul
          WHERE EXISTS(SELECT 1 FROM skill_grants g WHERE g.skill=p.name AND enabled AND target IN (?,?,'*')) ORDER BY name")
         .bind(&session.name).bind(company).fetch_all(pool).await?;
     let parent = data.join("session-config").join(&session.name);
+    if session.company_id.is_some() {
+        // Confinement binds this parent when the shell starts. A later grant
+        // must also be visible when the agent is started in that same shell.
+        fs::create_dir_all(&parent).await?;
+    }
     let root = parent.join("agent-skills");
     if packages.is_empty() {
         remove_if_present(&root).await?;

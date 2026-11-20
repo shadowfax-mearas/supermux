@@ -1,12 +1,13 @@
 import { useRef, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import { ResponsiveSheet } from '@/components/ui/responsive-sheet'
 import { encodeBytes, encodeText, markdown, skillLibrary, type SkillPackage } from '@/lib/api/skill-library'
 
 const field = 'w-full rounded-md border border-border bg-background px-3 py-2 text-sm'
 const template = (name: string) => `---\nname: ${name}\ndescription: Describe when to use this skill\n---\n\n`
-export function SkillEditor({ initial, id, close, saved, scopes }: {
-  scopes: Map<string, string>; initial: SkillPackage; id: string; close: () => void; saved: () => void
+export function SkillEditor({ initial, id, close, saved, scopes, target }: {
+  target: string; scopes: Map<string, string>; initial: SkillPackage; id: string; close: () => void; saved: () => void
 }) {
   const [name, setName] = useState(id)
   const [files, setFiles] = useState(initial.files)
@@ -16,6 +17,23 @@ export function SkillEditor({ initial, id, close, saved, scopes }: {
   const [busy, setBusy] = useState(false)
   const folder = useRef<HTMLInputElement>(null)
   const dirty = files !== initial.files || name !== id
+  const sources = useQuery({
+    queryKey: ['agent-skill-sources', target],
+    queryFn: () => skillLibrary.sources(target),
+    enabled: !initial.revision,
+  })
+  async function importInstalled(value: string) {
+    if (!value) return
+    setBusy(true)
+    try {
+      const [source, installedName] = JSON.parse(value) as [string, string]
+      const draft = await skillLibrary.draft(target, source, installedName)
+      setName(installedName)
+      setFiles(draft.files)
+      select('SKILL.md')
+      setError('')
+    } catch (err) { setError(String(err)) } finally { setBusy(false) }
+  }
   function dismiss() {
     if (!busy && (!dirty || window.confirm('Discard unsaved skill changes?'))) close()
   }
@@ -61,6 +79,12 @@ export function SkillEditor({ initial, id, close, saved, scopes }: {
         <input type="file" aria-label="Skill folder" ref={node => { folder.current = node; node?.setAttribute('webkitdirectory', '') }} multiple hidden onChange={e => void importFolder(e.target.files)} />
         <Button variant="outline" disabled={busy} onClick={() => folder.current?.click()}>Import folder</Button>
       </div>}
+      {!initial.revision && !!sources.data?.length && <label className="text-sm">Import from this server
+        <select className={field} value="" disabled={busy} onChange={e => void importInstalled(e.target.value)}>
+          <option value="">Choose an installed skill to copy</option>
+          {sources.data.map(([source, skill]) => <option key={source + skill} value={JSON.stringify([source, skill])}>{skill} · {source}</option>)}
+        </select></label>}
+      {sources.isError && <p className="text-sm text-muted-foreground">Server skill folders could not be loaded.</p>}
       {!!initial.grants?.length && <div className="text-sm"><h3 className="font-medium">Assigned to</h3>
         <ul>{initial.grants.map(([scope, enabled]) => <li key={scope}>{scopes.get(scope) ?? scope}{!enabled && ' (disabled)'}</li>)}</ul></div>}
       <label className="text-sm">Markdown file<select className={field} value={selected} onChange={e => select(e.target.value)}>

@@ -84,6 +84,6 @@ export function SkillLibraryView() {
         })}
       </ul>
     </div>
-    {editor && <SkillEditor scopes={options} id={editor.name} initial={editor.pkg} close={() => setEditor(null)} saved={() => { setEditor(null); void refresh() }} />}
+    {editor && <SkillEditor target={target} scopes={options} id={editor.name} initial={editor.pkg} close={() => setEditor(null)} saved={() => { setEditor(null); void refresh() }} />}
   </main>
 }
