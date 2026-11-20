@@ -45,6 +45,14 @@ pub async fn prepare(pool: &SqlitePool, data: &Path, session: &Session) -> Resul
     result
 }
 
+pub async fn cleanup(data: &Path, name: &str) {
+    if let Err(error) =
+        remove_if_present(&data.join("session-config").join(name).join("agent-skills")).await
+    {
+        tracing::warn!(session = name, %error, "could not remove the session's skill files");
+    }
+}
+
 async fn remove_if_present(dir: &Path) -> Result<()> {
     match fs::remove_dir_all(dir).await {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
